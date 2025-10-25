@@ -1,0 +1,4 @@
+com/numaansystems/gateway/filter/TokenRelayGatewayFilterFactory$Config.class
+com/numaansystems/gateway/config/SecurityConfig.class
+com/numaansystems/gateway/filter/TokenRelayGatewayFilterFactory.class
+com/numaansystems/gateway/GatewayApplication.class

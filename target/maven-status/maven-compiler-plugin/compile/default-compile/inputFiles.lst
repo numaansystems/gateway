@@ -1,0 +1,3 @@
+/workspaces/gateway/src/main/java/com/numaansystems/gateway/GatewayApplication.java
+/workspaces/gateway/src/main/java/com/numaansystems/gateway/config/SecurityConfig.java
+/workspaces/gateway/src/main/java/com/numaansystems/gateway/filter/TokenRelayGatewayFilterFactory.java
