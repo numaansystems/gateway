@@ -19,6 +19,16 @@ spring:
           filters:
             - StripPrefix=1  # Remove /gateway from path
 
+        # Legacy GWT webapp route (Spring Framework 3) - PLACEHOLDER URL
+        - id: numaan-webapp-route
+          uri: https://httpbin.org  # TEMP: Replace with actual domain when available
+          predicates:
+            - Path=/gateway/numaan/**
+          filters:
+            - StripPrefix=2  # Remove /gateway/numaan from path
+            - AddRequestHeader=X-Forwarded-Proto, https
+            - AddRequestHeader=X-Forwarded-Host, localhost:9090
+            - AddRequestHeader=X-Gateway-Route, numaan-webapp
         # Example external route
         - id: example-route
           uri: https://httpbin.org
