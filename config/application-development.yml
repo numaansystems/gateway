@@ -11,6 +11,14 @@ spring:
   cloud:
     gateway:
       routes:
+        # Gateway actuator endpoints route
+        - id: actuator-route
+          uri: http://localhost:9090
+          predicates:
+            - Path=/gateway/actuator/**
+          filters:
+            - StripPrefix=1  # Remove /gateway from path
+        # Example external route
         - id: example-route
           uri: https://httpbin.org
           predicates:
@@ -54,11 +62,13 @@ management:
     web:
       exposure:
         include: health,info,gateway,circuitbreakers,metrics,prometheus,env,loggers
-      base-path: /gateway/actuator
+      base-path: /actuator
   endpoint:
     health:
       show-details: always
       show-components: always
+    gateway:
+      enabled: true
   health:
     circuitbreakers:
       enabled: true
@@ -69,6 +79,8 @@ management:
     tags:
       application: gateway
       environment: development
+  server:
+    port: 9090
 
 # Comprehensive logging configuration
 logging:
