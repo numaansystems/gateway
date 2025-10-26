@@ -18,6 +18,7 @@ spring:
             - Path=/gateway/actuator/**
           filters:
             - StripPrefix=1  # Remove /gateway from path
+
         # Example external route
         - id: example-route
           uri: https://httpbin.org

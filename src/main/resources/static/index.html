@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>Spring Cloud Gateway</title>
+    <link rel="icon" type="image/x-icon" href="/favicon.ico">
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            min-height: 100vh;
+        }
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            background: rgba(255,255,255,0.1);
+            padding: 40px;
+            border-radius: 10px;
+            backdrop-filter: blur(10px);
+        }
+        h1 { color: #fff; margin-bottom: 30px; }
+        .status { color: #4ade80; font-weight: bold; }
+        .endpoint { 
+            background: rgba(0,0,0,0.2); 
+            padding: 10px; 
+            margin: 10px 0; 
+            border-radius: 5px;
+            font-family: monospace;
+        }
+        .endpoint a { color: #60a5fa; text-decoration: none; }
+        .endpoint a:hover { text-decoration: underline; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🚀 Spring Cloud Gateway</h1>
+        <p class="status">✅ Gateway is running successfully</p>
+        
+        <h2>Available Endpoints</h2>
+        
+        <h3>Health & Monitoring</h3>
+        <div class="endpoint">
+            <strong>Health Check:</strong> 
+            <a href="/gateway/actuator/health">/gateway/actuator/health</a>
+        </div>
+        <div class="endpoint">
+            <strong>Direct Health:</strong> 
+            <a href="/actuator/health">/actuator/health</a>
+        </div>
+        <div class="endpoint">
+            <strong>All Actuator:</strong> 
+            <a href="/gateway/actuator">/gateway/actuator</a>
+        </div>
+        <div class="endpoint">
+            <strong>Metrics:</strong> 
+            <a href="/gateway/actuator/metrics">/gateway/actuator/metrics</a>
+        </div>
+        <div class="endpoint">
+            <strong>Gateway Routes:</strong> 
+            <a href="/gateway/actuator/gateway/routes">/gateway/actuator/gateway/routes</a>
+        </div>
+        
+        <h3>Example Routes</h3>
+        <div class="endpoint">
+            <strong>HTTPBin Test:</strong> 
+            <a href="/gateway/httpbin/get">/gateway/httpbin/get</a>
+        </div>
+        
+        <h2>Configuration</h2>
+        <ul>
+            <li><strong>Port:</strong> 9090</li>
+            <li><strong>Profiles:</strong> development, production, sample</li>
+            <li><strong>Spring Boot:</strong> 3.4.4</li>
+            <li><strong>Spring Cloud:</strong> 2024.0.0</li>
+            <li><strong>Java:</strong> 17+</li>
+        </ul>
+    </div>
+</body>
+</html>

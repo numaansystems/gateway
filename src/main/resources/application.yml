@@ -9,6 +9,9 @@ spring:
     name: gateway
   profiles:
     active: development
+  web:
+    resources:
+      add-mappings: false  # Disable default static resource handling
 
 # Basic health check configuration
 management:
