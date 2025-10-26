@@ -6,7 +6,12 @@ REM Usage: scripts\gateway.bat {start|stop|status|restart|kill} [profile] [confi
 
 REM Script configuration
 set SCRIPT_DIR=%~dp0
-set APP_ROOT=%SCRIPT_DIR:~0,-9%
+REM Remove trailing backslash if present
+if "%SCRIPT_DIR:~-1%"=="\" set SCRIPT_DIR=%SCRIPT_DIR:~0,-1%
+REM Get parent directory
+for %%I in ("%SCRIPT_DIR%") do set APP_ROOT=%%~dpI
+REM Remove trailing backslash from APP_ROOT
+if "%APP_ROOT:~-1%"=="\" set APP_ROOT=%APP_ROOT:~0,-1%
 set APP_NAME=gateway
 set JAR_NAME=gateway-0.1.0.jar
 set DEFAULT_PROFILE=development
