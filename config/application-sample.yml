@@ -1,0 +1,204 @@
+# Sample Application Configuration
+# This file demonstrates various route configurations for Spring Cloud Gateway
+# Copy and modify sections as needed for your environment
+
+server:
+  port: 9090
+  error:
+    include-message: on-param
+    include-stacktrace: on-param
+
+spring:
+  application:
+    name: gateway
+  cloud:
+    gateway:
+      routes:
+        # Example 1: Simple proxy to external API with /gateway prefix
+        - id: httpbin-route
+          uri: https://httpbin.org
+          predicates:
+            - Path=/gateway/api/httpbin/**
+          filters:
+            - StripPrefix=3  # Remove /gateway/api/httpbin from path
+            - AddRequestHeader=X-Gateway-Source, sample-gateway
+            - AddResponseHeader=X-Forwarded-By, Spring-Cloud-Gateway
+
+        # Example 2: Route with path rewriting
+        - id: jsonplaceholder-route
+          uri: https://jsonplaceholder.typicode.com
+          predicates:
+            - Path=/gateway/api/posts/**
+          filters:
+            - RewritePath=/gateway/api/posts/(?<segment>.*), /posts/$\{segment}
+            - AddRequestHeader=X-Request-ID, ${random.uuid}
+
+        # Example 3: Route with request size limit
+        - id: upload-service
+          uri: https://httpbin.org
+          predicates:
+            - Path=/api/upload/**
+            - Method=POST
+          filters:
+            - StripPrefix=2
+            - RequestSize=10MB
+            - AddRequestHeader=X-Upload-Gateway, true
+
+        # Example 4: Route with rate limiting (requires Redis)
+        # - id: rate-limited-route
+        #   uri: https://httpbin.org
+        #   predicates:
+        #     - Path=/api/limited/**
+        #   filters:
+        #     - StripPrefix=2
+        #     - name: RequestRateLimiter
+        #       args:
+        #         redis-rate-limiter.replenishRate: 10
+        #         redis-rate-limiter.burstCapacity: 20
+        #         redis-rate-limiter.requestedTokens: 1
+
+        # Example 5: Route with custom predicates
+        - id: header-based-route
+          uri: https://httpbin.org
+          predicates:
+            - Path=/api/special/**
+            - Header=X-Special-Client, .+
+          filters:
+            - StripPrefix=2
+            - AddRequestHeader=X-Special-Processing, enabled
+
+        # Example 6: Internal microservice route
+        - id: user-service
+          uri: http://localhost:8081
+          predicates:
+            - Path=/api/users/**
+          filters:
+            - StripPrefix=1  # Remove /api prefix
+            - name: CircuitBreaker
+              args:
+                name: user-service-cb
+                fallbackUri: forward:/fallback/user-service
+            - name: Retry
+              args:
+                retries: 3
+                statuses: BAD_GATEWAY,GATEWAY_TIMEOUT
+                methods: GET,POST
+                backoff:
+                  firstBackoff: 50ms
+                  maxBackoff: 500ms
+
+        # Example 7: WebSocket route
+        - id: websocket-route
+          uri: ws://localhost:8082
+          predicates:
+            - Path=/ws/**
+
+        # Example 8: Route with OAuth2 token relay (when OAuth2 is enabled)
+        # - id: secured-api
+        #   uri: http://localhost:8083
+        #   predicates:
+        #     - Path=/api/secured/**
+        #   filters:
+        #     - TokenRelay
+
+      # Global filters applied to all routes
+      default-filters:
+        - name: CircuitBreaker
+          args:
+            name: defaultCircuitBreaker
+            fallbackUri: forward:/fallback/general
+        - AddRequestHeader=X-Gateway-Timestamp, #{T(java.time.Instant).now().toString()}
+        - AddResponseHeader=X-Response-Time, #{T(java.time.Instant).now().toString()}
+
+      # Global CORS configuration
+      globalcors:
+        corsConfigurations:
+          '[/**]':
+            allowedOriginPatterns: "*"
+            allowedMethods:
+              - GET
+              - POST
+              - PUT
+              - DELETE
+              - OPTIONS
+            allowedHeaders: "*"
+            allowCredentials: true
+            maxAge: 3600
+
+# Circuit Breaker Configuration
+resilience4j:
+  circuitbreaker:
+    instances:
+      defaultCircuitBreaker:
+        failure-rate-threshold: 50
+        wait-duration-in-open-state: 30s
+        sliding-window-size: 10
+        minimum-number-of-calls: 5
+        permitted-number-of-calls-in-half-open-state: 3
+        automatic-transition-from-open-to-half-open-enabled: true
+        record-exceptions:
+          - java.net.ConnectException
+          - java.util.concurrent.TimeoutException
+          - org.springframework.web.client.ResourceAccessException
+      user-service-cb:
+        failure-rate-threshold: 60
+        wait-duration-in-open-state: 20s
+        sliding-window-size: 8
+        minimum-number-of-calls: 4
+        permitted-number-of-calls-in-half-open-state: 2
+        automatic-transition-from-open-to-half-open-enabled: true
+
+  # Retry configuration
+  retry:
+    instances:
+      default:
+        max-attempts: 3
+        wait-duration: 100ms
+        retry-exceptions:
+          - java.net.ConnectException
+          - java.util.concurrent.TimeoutException
+
+# Management endpoints
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,gateway,circuitbreakers,metrics,prometheus,env,loggers
+      base-path: /gateway/actuator
+  endpoint:
+    health:
+      show-details: always
+      show-components: always
+    gateway:
+      enabled: true
+  health:
+    circuitbreakers:
+      enabled: true
+  metrics:
+    export:
+      prometheus:
+        enabled: true
+    tags:
+      application: gateway
+      environment: sample
+
+# Logging configuration
+logging:
+  level:
+    root: INFO
+    com.numaansystems.gateway: DEBUG
+    org.springframework.cloud.gateway: DEBUG
+    org.springframework.security: INFO
+    io.github.resilience4j: DEBUG
+  pattern:
+    console: "%d{yyyy-MM-dd HH:mm:ss.SSS} [%thread] %-5level [%X{traceId},%X{spanId}] %logger{36} - %msg%n"
+    file: "%d{yyyy-MM-dd HH:mm:ss.SSS} [%thread] %-5level [%X{traceId},%X{spanId}] %logger{36} - %msg%n"
+  file:
+    name: logs/gateway-sample.log
+  logback:
+    rollingpolicy:
+      max-file-size: 50MB
+      max-history: 14  # 2 weeks
+      total-size-cap: 500MB
+      file-name-pattern: logs/gateway-sample.%d{yyyy-MM-dd}.%i.log.gz
+      clean-history-on-start: true

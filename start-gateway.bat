@@ -86,10 +86,11 @@ set SPRING_OPTS=%SPRING_OPTS% --spring.config.location=classpath:/application.ym
 set SPRING_OPTS=%SPRING_OPTS% --logging.file.name=%LOG_FILE%
 set SPRING_OPTS=%SPRING_OPTS% --management.endpoints.web.exposure.include=health,info,metrics,prometheus
 
-echo Starting Spring Boot Gateway...
-echo Profile: %PROFILE%
-echo Config Directory: %CONFIG_DIR%
-echo Log File: %LOG_FILE%
+echo 🚀 Starting Gateway on port 9090 with context path /gateway
+echo 📋 Profile: %PROFILE%
+echo 📁 Config Directory: %CONFIG_DIR%
+echo 📝 Log File: %LOG_FILE%
+echo 🌐 Access URL: http://localhost:9090/gateway/actuator/health
 %JAVA_CMD% -version 2>&1 | findstr /i "version"
 
 REM Start the application in background

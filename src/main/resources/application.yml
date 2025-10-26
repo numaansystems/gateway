@@ -2,7 +2,7 @@
 # External configuration files should be placed in config/ directory
 
 server:
-  port: 8080
+  port: 9090
 
 spring:
   application:
@@ -16,6 +16,7 @@ management:
     web:
       exposure:
         include: health
+      base-path: /gateway/actuator
   endpoint:
     health:
       show-details: when-authorized
