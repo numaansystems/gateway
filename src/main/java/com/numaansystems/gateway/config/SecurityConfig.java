@@ -10,20 +10,20 @@ public class SecurityConfig {
 
     @Bean
     public SecurityWebFilterChain securityWebFilterChain(ServerHttpSecurity http) {
-        // Basic reactive security configuration:
-        // - enable oauth2Login (Azure AD)
-        // - require authentication for gateway proxied paths
-        http
+        return http
             .authorizeExchange(exchanges -> exchanges
                 .pathMatchers("/actuator/**").permitAll()
-                .pathMatchers("/login/**", "/oauth2/**").permitAll()
+                .pathMatchers("/login/**", "/oauth2/**", "/error").permitAll()
                 .anyExchange().authenticated()
             )
-            .oauth2Login()
-            .and()
-            .logout().and()
-            .csrf().disable();
-
-        return http.build();
+            .oauth2Login(oauth2 -> oauth2
+                .authenticationSuccessHandler((exchange, authentication) -> {
+                    // Redirect to original requested URL after successful authentication
+                    return exchange.getExchange().getResponse().setComplete();
+                }))
+            .logout(logout -> logout
+                .logoutUrl("/logout"))
+            .csrf(csrf -> csrf.disable())
+            .build();
     }
 }

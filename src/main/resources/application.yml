@@ -24,18 +24,32 @@ spring:
           predicates:
             - Path=/client1/**
           filters:
-            - TokenRelay=registrationId=azure,userHeader=X-Forwarded-User
-            - PreserveHostHeader=true
+            - TokenRelay
+            - RemoveRequestHeader=Cookie
+            - StripPrefix=1
 
         - id: client2
           uri: http://localhost:8082
           predicates:
             - Path=/client2/**
           filters:
-            - TokenRelay=registrationId=azure,userHeader=X-Forwarded-User
-            - PreserveHostHeader=true
+            - TokenRelay
+            - RemoveRequestHeader=Cookie
+            - StripPrefix=1
+
+      default-filters:
+        - DedupeResponseHeader=Access-Control-Allow-Credentials Access-Control-Allow-Origin
 
 logging:
   level:
     root: INFO
     com.numaansystems.gateway: DEBUG
+    org.springframework.cloud.gateway: DEBUG
+    org.springframework.security: DEBUG
+    org.springframework.web.reactive: DEBUG
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,gateway
