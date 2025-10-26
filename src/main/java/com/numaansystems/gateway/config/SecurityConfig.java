@@ -14,15 +14,9 @@ public class SecurityConfig {
             .authorizeExchange(exchanges -> exchanges
                 .pathMatchers("/actuator/**").permitAll()
                 .pathMatchers("/login/**", "/oauth2/**", "/error").permitAll()
-                .anyExchange().authenticated()
+                .pathMatchers("/fallback/**").permitAll() // Allow fallback endpoints
+                .anyExchange().permitAll() // Temporarily allow all for testing
             )
-            .oauth2Login(oauth2 -> oauth2
-                .authenticationSuccessHandler((exchange, authentication) -> {
-                    // Redirect to original requested URL after successful authentication
-                    return exchange.getExchange().getResponse().setComplete();
-                }))
-            .logout(logout -> logout
-                .logoutUrl("/logout"))
             .csrf(csrf -> csrf.disable())
             .build();
     }

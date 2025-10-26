@@ -1,0 +1,172 @@
+# External Application Configuration for Production
+# Place this file in: config/application-production.yml
+
+server:
+  port: 8080
+  error:
+    include-message: never
+    include-stacktrace: never
+    whitelabel:
+      enabled: false
+
+spring:
+  security:
+    oauth2:
+      client:
+        registration:
+          azure:
+            client-id: "${AZURE_CLIENT_ID}"
+            client-secret: "${AZURE_CLIENT_SECRET}"
+            authorization-grant-type: authorization_code
+            redirect-uri: "{baseUrl}/login/oauth2/code/{registrationId}"
+            scope: openid,profile,email
+        provider:
+          azure:
+            issuer-uri: "https://login.microsoftonline.com/${AZURE_TENANT_ID}/v2.0"
+
+  cloud:
+    gateway:
+      httpclient:
+        connect-timeout: 5000
+        response-timeout: 30s
+        pool:
+          max-idle-time: 30s
+          max-life-time: 60s
+      
+      routes:
+        - id: client1-prod
+          uri: "${CLIENT1_URL:http://client1-service:8080}"
+          predicates:
+            - Path=/client1/**
+          filters:
+            - name: TokenRelay
+            - name: RemoveRequestHeader
+              args:
+                name: Cookie
+            - name: StripPrefix
+              args:
+                parts: 1
+            - name: CircuitBreaker
+              args:
+                name: client1-cb
+                fallbackUri: forward:/fallback/client1
+            - name: Retry
+              args:
+                retries: 3
+                methods: GET,POST
+                backoff:
+                  firstBackoff: 100ms
+                  maxBackoff: 500ms
+                  factor: 2
+
+        - id: client2-prod
+          uri: "${CLIENT2_URL:http://client2-service:8080}"
+          predicates:
+            - Path=/client2/**
+          filters:
+            - name: TokenRelay
+            - name: RemoveRequestHeader
+              args:
+                name: Cookie
+            - name: StripPrefix
+              args:
+                parts: 1
+            - name: CircuitBreaker
+              args:
+                name: client2-cb
+                fallbackUri: forward:/fallback/client2
+            - name: Retry
+              args:
+                retries: 3
+                methods: GET,POST
+                backoff:
+                  firstBackoff: 100ms
+                  maxBackoff: 500ms
+                  factor: 2
+
+      default-filters:
+        - DedupeResponseHeader=Access-Control-Allow-Credentials Access-Control-Allow-Origin
+        - AddResponseHeader=X-Response-Time, #{T(System).currentTimeMillis() - exchange.attributes['requestTime']}
+
+resilience4j:
+  circuitbreaker:
+    instances:
+      client1-cb:
+        failure-rate-threshold: 50
+        wait-duration-in-open-state: 30s
+        sliding-window-size: 10
+        minimum-number-of-calls: 5
+        permitted-number-of-calls-in-half-open-state: 3
+        automatic-transition-from-open-to-half-open-enabled: true
+        record-exceptions:
+          - java.net.ConnectException
+          - java.util.concurrent.TimeoutException
+          - org.springframework.web.reactive.function.client.WebClientResponseException.ServiceUnavailable
+      client2-cb:
+        failure-rate-threshold: 50
+        wait-duration-in-open-state: 30s
+        sliding-window-size: 10
+        minimum-number-of-calls: 5
+        permitted-number-of-calls-in-half-open-state: 3
+        automatic-transition-from-open-to-half-open-enabled: true
+        record-exceptions:
+          - java.net.ConnectException
+          - java.util.concurrent.TimeoutException
+          - org.springframework.web.reactive.function.client.WebClientResponseException.ServiceUnavailable
+
+logging:
+  level:
+    root: WARN
+    com.numaansystems.gateway: INFO
+    org.springframework.cloud.gateway: INFO
+    org.springframework.security: WARN
+    io.github.resilience4j: INFO
+    org.springframework.web.reactive.function.client: WARN
+    org.springframework.boot.actuate: WARN
+  pattern:
+    console: "%d{yyyy-MM-dd HH:mm:ss.SSS} [%thread] %-5level [%X{traceId},%X{spanId}] %logger{36} - %msg%n"
+    file: "%d{yyyy-MM-dd HH:mm:ss.SSS} [%thread] %-5level [%X{traceId},%X{spanId}] %logger{40} - %msg%n"
+  file:
+    name: logs/gateway-production.log
+  logback:
+    rollingpolicy:
+      max-file-size: 50MB
+      max-history: 14  # 2 weeks
+      total-size-cap: 1GB
+      file-name-pattern: logs/gateway-production.%d{yyyy-MM-dd}.%i.log.gz
+      clean-history-on-start: true
+  access:
+    enabled: true
+    file: logs/gateway-access.log
+    rolling:
+      max-file-size: 100MB
+      max-history: 7  # 1 week for access logs
+      file-name-pattern: logs/gateway-access.%d{yyyy-MM-dd}.%i.log.gz
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus
+      base-path: /actuator
+  endpoint:
+    health:
+      show-details: when-authorized
+      show-components: always
+    info:
+      enabled: true
+  health:
+    circuitbreakers:
+      enabled: true
+  metrics:
+    export:
+      prometheus:
+        enabled: true
+    tags:
+      application: gateway
+      environment: production
+  info:
+    git:
+      mode: full
+    build:
+      enabled: true

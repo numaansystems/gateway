@@ -1,55 +1,27 @@
+# Minimal embedded configuration - External config takes precedence
+# External configuration files should be placed in config/ directory
+
 server:
   port: 8080
 
 spring:
-  security:
-    oauth2:
-      client:
-        registration:
-          azure:
-            client-id: "${AZURE_CLIENT_ID:your-client-id}"
-            client-secret: "${AZURE_CLIENT_SECRET:your-client-secret}"
-            authorization-grant-type: authorization_code
-            redirect-uri: "{baseUrl}/login/oauth2/code/{registrationId}"
-            scope: openid,profile,email
-        provider:
-          azure:
-            issuer-uri: "https://login.microsoftonline.com/${AZURE_TENANT_ID:your-tenant-id}/v2.0"
+  application:
+    name: gateway
+  profiles:
+    active: development
 
-  cloud:
-    gateway:
-      routes:
-        - id: client1
-          uri: http://localhost:8081
-          predicates:
-            - Path=/client1/**
-          filters:
-            - TokenRelay
-            - RemoveRequestHeader=Cookie
-            - StripPrefix=1
-
-        - id: client2
-          uri: http://localhost:8082
-          predicates:
-            - Path=/client2/**
-          filters:
-            - TokenRelay
-            - RemoveRequestHeader=Cookie
-            - StripPrefix=1
-
-      default-filters:
-        - DedupeResponseHeader=Access-Control-Allow-Credentials Access-Control-Allow-Origin
-
-logging:
-  level:
-    root: INFO
-    com.numaansystems.gateway: DEBUG
-    org.springframework.cloud.gateway: DEBUG
-    org.springframework.security: DEBUG
-    org.springframework.web.reactive: DEBUG
-
+# Basic health check configuration
 management:
   endpoints:
     web:
       exposure:
-        include: health,gateway
+        include: health
+  endpoint:
+    health:
+      show-details: when-authorized
+
+# Default logging until external config is loaded
+logging:
+  level:
+    root: INFO
+    com.numaansystems.gateway: INFO

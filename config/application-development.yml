@@ -1,0 +1,91 @@
+# External Application Configuration for Development
+# Place this file in: config/application-development.yml
+
+server:
+  port: 8080
+  error:
+    include-message: on-param
+    include-stacktrace: on-param
+
+spring:
+  cloud:
+    gateway:
+      routes:
+        - id: example-route
+          uri: https://httpbin.org
+          predicates:
+            - Path=/httpbin/**
+          filters:
+            - StripPrefix=1
+      default-filters:
+        - name: CircuitBreaker
+          args:
+            name: defaultCircuitBreaker
+            fallbackUri: forward:/fallback/general
+
+# Circuit Breaker Configuration
+resilience4j:
+  circuitbreaker:
+    instances:
+      defaultCircuitBreaker:
+        failure-rate-threshold: 50
+        wait-duration-in-open-state: 30s
+        sliding-window-size: 10
+        minimum-number-of-calls: 5
+        permitted-number-of-calls-in-half-open-state: 3
+        automatic-transition-from-open-to-half-open-enabled: true
+        record-exceptions:
+          - java.net.ConnectException
+          - java.util.concurrent.TimeoutException
+      client2-cb:
+        failure-rate-threshold: 60
+        wait-duration-in-open-state: 10s
+        sliding-window-size: 6
+        minimum-number-of-calls: 3
+        permitted-number-of-calls-in-half-open-state: 2
+        automatic-transition-from-open-to-half-open-enabled: true
+        record-exceptions:
+          - java.net.ConnectException
+          - java.util.concurrent.TimeoutException
+
+# Management endpoints configuration
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,gateway,circuitbreakers,metrics,prometheus,env,loggers
+  endpoint:
+    health:
+      show-details: always
+      show-components: always
+  health:
+    circuitbreakers:
+      enabled: true
+  metrics:
+    export:
+      prometheus:
+        enabled: true
+    tags:
+      application: gateway
+      environment: development
+
+# Comprehensive logging configuration
+logging:
+  level:
+    root: INFO
+    com.numaansystems.gateway: DEBUG
+    org.springframework.cloud.gateway: DEBUG
+    org.springframework.security: DEBUG
+    io.github.resilience4j: DEBUG
+  pattern:
+    console: "%d{yyyy-MM-dd HH:mm:ss.SSS} [%thread] %-5level [%X{traceId},%X{spanId}] %logger{36} - %msg%n"
+    file: "%d{yyyy-MM-dd HH:mm:ss.SSS} [%thread] %-5level [%X{traceId},%X{spanId}] %logger{36} - %msg%n"
+  file:
+    name: logs/gateway-development.log
+  logback:
+    rollingpolicy:
+      max-file-size: 50MB
+      max-history: 14  # 2 weeks
+      total-size-cap: 500MB
+      file-name-pattern: logs/gateway-development.%d{yyyy-MM-dd}.%i.log.gz
+      clean-history-on-start: true

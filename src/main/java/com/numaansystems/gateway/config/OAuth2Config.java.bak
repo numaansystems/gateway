@@ -1,0 +1,74 @@
+package com.numaansystems.gateway.config;
+
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+import org.springframework.security.oauth2.client.ReactiveOAuth2AuthorizedClientManager;
+import org.springframework.security.oauth2.client.ReactiveOAuth2AuthorizedClientProvider;
+import org.springframework.security.oauth2.client.ReactiveOAuth2AuthorizedClientProviderBuilder;
+import org.springframework.security.oauth2.client.registration.ReactiveClientRegistrationRepository;
+import org.springframework.security.oauth2.client.web.DefaultReactiveOAuth2AuthorizedClientManager;
+import org.springframework.security.oauth2.client.web.server.ServerOAuth2AuthorizedClientRepository;
+import org.springframework.security.oauth2.core.AuthorizationGrantType;
+import org.springframework.security.oauth2.core.OAuth2AuthorizationException;
+import org.springframework.security.oauth2.core.OAuth2Error;
+import reactor.core.publisher.Mono;
+import reactor.util.retry.Retry;
+import java.time.Duration;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+@Configuration
+public class OAuth2Config {
+
+    private static final Logger logger = LoggerFactory.getLogger(OAuth2Config.class);
+
+    /**
+     * Production-ready reactive OAuth2 client manager with error handling and resilience.
+     * Handles token refresh, retries, and error scenarios for the built-in TokenRelay filter.
+     */
+    @Bean
+    public ReactiveOAuth2AuthorizedClientManager authorizedClientManager(
+            ReactiveClientRegistrationRepository clientRegistrationRepository,
+            ServerOAuth2AuthorizedClientRepository authorizedClientRepository) {
+
+        ReactiveOAuth2AuthorizedClientProvider authorizedClientProvider =
+                ReactiveOAuth2AuthorizedClientProviderBuilder.builder()
+                        .authorizationCode()
+                        .refreshToken(configurer -> configurer
+                            .clockSkew(Duration.ofMinutes(1)) // Handle clock skew
+                        )
+                        .clientCredentials(configurer -> configurer
+                            .clockSkew(Duration.ofMinutes(1))
+                        )
+                        .build();
+
+        DefaultReactiveOAuth2AuthorizedClientManager authorizedClientManager =
+                new DefaultReactiveOAuth2AuthorizedClientManager(
+                        clientRegistrationRepository, authorizedClientRepository);
+        
+        authorizedClientManager.setAuthorizedClientProvider(authorizedClientProvider);
+        
+        // Add error handling and retry logic
+        authorizedClientManager.setAuthorizationSuccessHandler((clientRegistrationId, principal, attributes) -> {
+            logger.debug("OAuth2 authorization successful for client: {} and principal: {}", 
+                clientRegistrationId, principal.getName());
+            return Mono.empty();
+        });
+        
+        authorizedClientManager.setAuthorizationFailureHandler((clientRegistrationId, principal, attributes) -> {
+            Throwable exception = (Throwable) attributes.get("error");
+            if (exception instanceof OAuth2AuthorizationException) {
+                OAuth2Error error = ((OAuth2AuthorizationException) exception).getError();
+                logger.error("OAuth2 authorization failed for client: {} and principal: {}. Error: {} - {}", 
+                    clientRegistrationId, principal != null ? principal.getName() : "unknown", 
+                    error.getErrorCode(), error.getDescription());
+            } else {
+                logger.error("OAuth2 authorization failed for client: {} and principal: {}", 
+                    clientRegistrationId, principal != null ? principal.getName() : "unknown", exception);
+            }
+            return Mono.empty();
+        });
+
+        return authorizedClientManager;
+    }
+}
