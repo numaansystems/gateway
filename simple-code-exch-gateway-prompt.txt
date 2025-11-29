@@ -1,0 +1,303 @@
+# GitHub Copilot Agent Prompt - Azure AD Gateway for Legacy Applications
+
+Use this prompt with GitHub Copilot Agent to create a complete, production-ready Azure AD authentication gateway:
+
+---
+
+## Prompt
+
+Create a Spring Boot 3.4.4 servlet-based gateway application for Azure AD OAuth2 authentication with the following specifications:
+
+# Project Setup
+- GroupId: com.numaansystems
+- ArtifactId: gateway
+- Version: 0.1.0
+- Java: 17
+- Packaging: jar
+- Spring Boot: 3.4.4 (use spring-boot-starter-parent)
+
+# Dependencies (pom.xml)
+Required:
+- spring-boot-starter-web (NOT webflux)
+- spring-boot-starter-security
+- spring-boot-starter-oauth2-client
+- spring-boot-starter-actuator
+- spring-boot-starter-logging
+
+Optional:
+- spring-boot-starter-data-jpa
+- mysql-connector-j
+
+# Configuration (application.yml)
+```yaml
+server:
+  port: 9090
+  servlet:
+    context-path: /gateway
+    session:
+      cookie:
+        http-only: true
+        secure: true
+        same-site: lax
+
+spring:
+  application:
+    name: gateway
+  security:
+    oauth2:
+      client:
+        registration:
+          azure:
+            client-id: "${AZURE_CLIENT_ID:your-client-id}"
+            client-secret: "${AZURE_CLIENT_SECRET:your-client-secret}"
+            scope: openid,profile,email
+            authorization-grant-type: authorization_code
+            redirect-uri: "{baseUrl}/login/oauth2/code/{registrationId}"
+        provider:
+          azure:
+            issuer-uri: "https://login.microsoftonline.com/${AZURE_TENANT_ID:your-tenant-id}/v2.0"
+
+gateway:
+  allowed-redirect-domains:
+    - app.example.com
+    - localhost
+  exchange-token:
+    ttl-minutes: 2
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics
+
+logging:
+  level:
+    com.numaansystems.gateway: INFO
+    org.springframework.security: INFO
+```
+
+# Java Classes to Create
+
+## 1. GatewayApplication.java
+Package: com.numaansystems.gateway
+- Standard @SpringBootApplication with main method
+- Add comprehensive Javadoc explaining this is an Azure AD gateway for legacy applications
+
+## 2. SecurityConfig.java
+Package: com.numaansystems.gateway.config
+- @Configuration and @EnableWebSecurity
+- Create SecurityFilterChain bean with HttpSecurity (NOT ServerHttpSecurity)
+- Permit without auth: /actuator/**, /error, /auth/**
+- Require authentication for all other requests
+- Configure oauth2Login with customAuthenticationSuccessHandler
+- Disable CSRF
+- Use servlet-based Spring Security (NOT reactive)
+
+## 3. CustomAuthenticationSuccessHandler.java
+Package: com.numaansystems.gateway.config
+- Implement AuthenticationSuccessHandler (servlet interface)
+- @Component annotation
+- Autowire ExchangeTokenService
+- Autowire UserAuthorityService with @Autowired(required = false)
+- Inject @Value("${gateway.allowed-redirect-domains}") as List<String>
+
+Logic in onAuthenticationSuccess:
+1. Get returnUrl from HttpSession
+2. If returnUrl exists:
+   - Validate returnUrl domain against allowed-redirect-domains list
+   - Cast Authentication to OAuth2AuthenticationToken
+   - Extract OAuth2User and attributes
+   - Get username from "preferred_username" or "email" attribute
+   - Get email from "email" attribute
+   - Get name from "name" attribute
+   - Extract authorities:
+     * Get "roles" from attributes (Azure AD roles)
+     * Get authorities from OAuth2User.getAuthorities()
+     * If userAuthorityService exists, call loadAuthoritiesByUsername(username) and merge
+   - Create exchange token via exchangeTokenService.createToken(username, email, name, authorities)
+   - Build callback URL: extract base URL from returnUrl, append /auth/callback?token={token}&returnUrl={encoded}
+   - Remove returnUrl from session
+   - Redirect to callback URL
+3. If no returnUrl, redirect to "/"
+4. Add comprehensive logging at INFO level
+
+Helper method isAllowedDomain(String url):
+- Parse URL to extract host
+- Check if host equals any allowed domain OR ends with "." + allowed domain
+- Return boolean
+- Log warnings for unauthorized domains
+
+## 4. AuthController.java
+Package: com.numaansystems.gateway.controller
+- @RestController
+- @RequestMapping("/auth")
+- Autowire ExchangeTokenService
+- Use SLF4J Logger
+
+Create 4 endpoints:
+
+**GET /initiate**
+- @RequestParam String returnUrl
+- Parameters: HttpServletRequest, HttpServletResponse, HttpSession, Authentication
+- Store returnUrl in session
+- Check if user already authenticated (authentication != null && !equals "anonymousUser")
+- Redirect to /oauth2/authorization/azure
+- Log at INFO level
+
+**POST /validate-token**
+- @RequestParam String token
+- Parameters: HttpServletRequest
+- Call exchangeTokenService.validateAndRemoveToken(token)
+- If null, return 401 with {success: false, error: "Invalid or expired token"}
+- If valid, return 200 with {success: true, username, email, name, authorities: []}
+- Log token validation attempts and results
+
+**GET /logout**
+- @RequestParam(required = false) String returnUrl
+- Parameters: HttpSession, HttpServletResponse
+- Invalidate session
+- Redirect to returnUrl or "/"
+- Log logout events
+
+**GET /health**
+- Return {status: "UP", service: "azure-ad-gateway", version: "1.0.0"}
+
+## 5. ExchangeTokenService.java
+Package: com.numaansystems.gateway.service
+- @Service
+- @Value("${gateway.exchange-token.ttl-minutes:2}") long ttlMinutes
+- Use ConcurrentHashMap<String, ExchangeTokenData> for token storage
+- Use ScheduledExecutorService for cleanup
+- SLF4J Logger
+
+Methods:
+
+**createToken(String username, String email, String name, Set<String> authorities)**
+- Generate UUID token
+- Create ExchangeTokenData with username, email, name, authorities array, expiresAt timestamp
+- Store in map
+- Schedule cleanup task after ttlMinutes using scheduler.schedule()
+- Log token creation with username and expiration time
+- Return token string
+
+**validateAndRemoveToken(String token)**
+- Remove token from map (single use)
+- If null, log warning and return null
+- Check if expired (System.currentTimeMillis() > expiresAt)
+- If expired, log warning and return null
+- Log successful validation with username and authority count
+- Return ExchangeTokenData
+
+**getActiveTokenCount()**
+- Return tokens.size()
+
+**Inner class ExchangeTokenData**
+- Public fields: String username, email, name, String[] authorities, long expiresAt
+
+Add comprehensive Javadoc explaining:
+- Exchange tokens are single-use
+- 2-minute expiration (accommodates MFA)
+- For production, replace with Redis
+
+## 6. UserAuthorityService.java
+Package: com.numaansystems.gateway.service
+- Interface (NOT @Service)
+- Single method: Collection<String> loadAuthoritiesByUsername(String username)
+- Comprehensive Javadoc explaining:
+  * Optional interface for database authority lookup
+  * Autowired with required=false
+  * Returns authority strings like "ROLE_ADMIN", "PERMISSION_READ"
+  * Application works without implementation
+
+## 7. UserAuthorityServiceImpl.java (OPTIONAL - comment out by default)
+Package: com.numaansystems.gateway.service
+- @Service (commented out)
+- Implements UserAuthorityService
+- Autowire JdbcTemplate
+- Implementation:
+```java
+String sql = """
+    SELECT a.authority_name 
+    FROM user_authorities ua
+    JOIN authorities a ON ua.authority_id = a.id
+    WHERE ua.username = ? AND ua.active = true
+    """;
+return jdbcTemplate.queryForList(sql, String.class, username);
+```
+- Javadoc explaining expected database schema
+- Note: Entire class should be commented out or removed for basic setup
+
+# Documentation Files
+
+## README.md
+Create comprehensive README with:
+- Project overview
+- Features list (MFA support, no JWT in URLs, single-use tokens, cross-domain, etc.)
+- Architecture diagram (text-based flow)
+- Prerequisites (Java 17+, Maven, Azure AD app registration)
+- Azure AD configuration steps
+- Environment variables needed
+- Configuration guide
+- Build instructions (mvn clean package)
+- Run instructions (dev and prod)
+- Endpoint documentation with examples:
+  * GET /auth/initiate?returnUrl=...
+  * POST /auth/validate-token?token=...
+  * GET /auth/logout?returnUrl=...
+  * GET /auth/health
+- Database authority lookup setup (optional section)
+- Security features explanation
+- Production deployment checklist (Redis, HTTPS, logging, monitoring)
+- Troubleshooting section
+- License (MIT)
+
+## .gitignore
+Include:
+- Maven (target/, .mvn/, pom.xml.*, *.properties)
+- IDE (.idea/, *.iml, .classpath, .project, .settings/, .vscode/)
+- Spring Boot (application-local.yml, application-dev.yml)
+- Logs (logs/, *.log)
+- OS (.DS_Store, Thumbs.db)
+- Temp files (*.tmp, *.bak, *.swp, *~)
+
+# Code Quality Requirements
+- Use Java 17 features where appropriate
+- Comprehensive SLF4J logging at appropriate levels (INFO for normal operations, WARN for security issues, ERROR for exceptions)
+- Detailed Javadoc on all classes and public methods
+- Proper exception handling with try-catch where needed
+- Use modern Spring Boot 3.x patterns
+- Follow Spring Security 6.x conventions
+- No deprecated APIs
+- All strings externalized to configuration where appropriate
+- Proper use of Optional, Stream API, and modern Java idioms
+
+# Architecture Principles
+- Simple servlet-based (NO reactive/WebFlux)
+- No Spring Cloud Gateway routing
+- Three REST endpoints for legacy app integration
+- Stateless token exchange pattern
+- Cross-domain support (separate sessions on gateway and legacy app)
+- Backend-to-backend token validation (no CORS issues)
+- Authorities merged from Azure AD + optional database
+- Exchange tokens: UUID-based, 2-minute TTL, single-use
+- Automatic token cleanup with scheduled executor
+
+# Security Requirements
+- HTTP-Only session cookies
+- Secure flag on cookies
+- SameSite=Lax cookie policy
+- Domain validation for redirects (prevent open redirect)
+- Single-use exchange tokens
+- Short token lifetime (2 minutes for MFA support)
+- Backend token validation (not exposed to browser)
+- Session invalidation on logout
+- Comprehensive security logging
+
+# Testing Considerations
+Add comments in code suggesting:
+- Unit tests for token service (creation, validation, expiration)
+- Integration tests for OAuth2 flow
+- Security tests for domain validation
+- Mock tests for UserAuthorityService
+
+Please create all files in proper package structure with complete, production-ready code.
