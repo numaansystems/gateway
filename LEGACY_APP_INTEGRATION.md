@@ -1,182 +1,129 @@
-# Legacy Application Integration Guide
-
-## AuthenticationFilter.java Implementation
-```java
-import javax.servlet.Filter;
-import javax.servlet.FilterChain;
-import javax.servlet.FilterConfig;
 import javax.servlet.ServletException;
-import javax.servlet.ServletRequest;
-import javax.servlet.ServletResponse;
+import javax.servlet.annotation.WebServlet;
+import javax.servlet.http.Cookie;
+import javax.servlet.http.HttpServlet;
 import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
+import org.json.JSONObject;
+import java.io.BufferedReader;
 import java.io.IOException;
+import java.io.InputStreamReader;
+import java.net.HttpURLConnection;
+import java.net.URL;
 
-public class AuthenticationFilter implements Filter {
+@WebServlet({"/auth/callback", "/auth/logout"})
+public class AuthCallbackServlet extends HttpServlet {
 
-    private static final String GATEWAY_URL = "https://gateway.example.com/gateway/auth/initiate";
-
-    @Override
-    public void init(FilterConfig filterConfig) throws ServletException {
-        // Initialization logic
+    protected void doPost(HttpServletRequest request, HttpServletResponse response) throws ServletException, IOException {
+        String path = request.getServletPath();
+        if ("/auth/callback".equals(path)) {
+            handleAuthCallback(request, response);
+        } else if ("/auth/logout".equals(path)) {
+            handleLogout(request, response);
+        }
     }
 
-    @Override
-    public void doFilter(ServletRequest request, ServletResponse response, FilterChain chain)
-            throws IOException, ServletException {
-        HttpServletRequest httpRequest = (HttpServletRequest) request;
-        HttpServletResponse httpResponse = (HttpServletResponse) response;
-
-        // Bypass logic for static resources
-        String uri = httpRequest.getRequestURI();
-        if (shouldBypass(uri)) {
-            chain.doFilter(request, response);
+    private void handleAuthCallback(HttpServletRequest request, HttpServletResponse response) throws IOException {
+        String token = request.getParameter("token");
+        if (!isValidToken(token)) {
+            response.sendError(HttpServletResponse.SC_UNAUTHORIZED, "Invalid token");
             return;
         }
-        
-        // Session checking logic here
-        if (!isAuthenticated(httpRequest)) {
-            httpResponse.sendRedirect(GATEWAY_URL);
-            return;
-        }
-
-        chain.doFilter(request, response);
+        createSession(response, token);
+        response.sendRedirect("/home");
     }
 
-    private boolean shouldBypass(String uri) {
-        // Static resource patterns
-        String[] staticPatterns = {
-            ".css", ".js", ".jpg", ".png", ".gif",
-            ".ico", ".svg", ".woff", ".woff2",
-            ".ttf", ".eot", "/static/", "/assets/",
-            "/images/", "/css/", "/js/", "/fonts/",
-            "/resources/", "/public/", "/webjars/", "/gwt/"
-        };
-        for (String pattern : staticPatterns) {
-            if (uri.contains(pattern)) {
-                return true;
-            }
-        }
-        // Excluded paths
-        String[] excludedPaths = {
-            "/auth/callback", "/auth/logout", "/error",
-            "/health", "/login", "/WEB-INF/"
-        };
-        for (String path : excludedPaths) {
-            if (uri.equals(path)) {
-                return true;
+    private boolean isValidToken(String token) throws IOException {
+        URL url = new URL("http://gateway/validateToken");
+        HttpURLConnection conn = (HttpURLConnection) url.openConnection();
+        conn.setRequestMethod("POST");
+        conn.setRequestProperty("Authorization", "Bearer " + token);
+        conn.setDoOutput(true);
+
+        int responseCode = conn.getResponseCode();
+        if (responseCode == HttpURLConnection.HTTP_OK) {
+            try (BufferedReader in = new BufferedReader(new InputStreamReader(conn.getInputStream()))) {
+                StringBuilder response = new StringBuilder();
+                String inputLine;
+                while ((inputLine = in.readLine()) != null) {
+                    response.append(inputLine);
+                }
+                JSONObject jsonResponse = new JSONObject(response.toString());
+                return jsonResponse.getBoolean("valid");
             }
         }
         return false;
     }
 
-    private boolean isAuthenticated(HttpServletRequest request) {
-        // Logic to check authenticated session
-        return request.getSession(false) != null;
+    private void createSession(HttpServletResponse response, String token) {
+        Cookie cookie = new Cookie("sessionToken", token);
+        cookie.setHttpOnly(true);
+        cookie.setSecure(true);
+        cookie.setPath("/");
+        response.addCookie(cookie);
     }
 
-    private String buildCurrentUrl(HttpServletRequest request) {
-        // Logic to build current URL with query parameters
-        return request.getRequestURL().toString();
-    }
-
-    @Override
-    public void destroy() {
-        // Cleanup logic
+    private void handleLogout(HttpServletRequest request, HttpServletResponse response) throws IOException {
+        Cookie cookie = new Cookie("sessionToken", null);
+        cookie.setMaxAge(0);
+        cookie.setPath("/");
+        response.addCookie(cookie);
+        response.sendRedirect("/login");
     }
 }
-```
 
-## AuthCallbackController.java Implementation
-```java
-import org.springframework.web.bind.annotation.*;
-import org.springframework.web.client.RestTemplate;
-import javax.servlet.http.HttpServletRequest;
-import javax.servlet.http.HttpSession;
+// AuthenticationFilter for static resource access
+@WebFilter("/*")
+public class AuthenticationFilter implements Filter {
 
-@RestController
-@RequestMapping("/auth")
-public class AuthCallbackController {
-
-    private static final String GATEWAY_VALIDATE_URL = "https://gateway.example.com/gateway/auth/validate-token";
-
-    @PostMapping("/callback")
-    public String handleAuthCallback(HttpServletRequest request, @RequestParam String token, HttpSession session) {
-        // Token validation logic
-        RestTemplate restTemplate = new RestTemplate();
-        ValidateResponse response = restTemplate.postForObject(GATEWAY_VALIDATE_URL, token, ValidateResponse.class);
-        if (response != null && response.isValid()) {
-            // Create session attributes
-            session.setAttribute("authenticated", true);
-            session.setAttribute("username", response.getUsername());
-            session.setAttribute("email", response.getEmail());
-            session.setAttribute("name", response.getName());
-            session.setAttribute("roles", response.getRoles());
-            // Set HTTP-Only and Secure cookies
-            // Session timeout configuration
-            session.setMaxInactiveInterval(1800);
-            return "redirect:/success";
-        } else {
-            // Error handling
+    public void doFilter(ServletRequest request, ServletResponse response, FilterChain chain) throws IOException, ServletException {
+        HttpServletRequest req = (HttpServletRequest) request;
+        String path = req.getServletPath();
+        if (path.endsWith(".css") || path.endsWith(".js") || path.endsWith(".png") || path.endsWith(".jpg")) {
+            chain.doFilter(request, response);
+            return;
         }
-        return "redirect:/error";
+        // Add your authentication logic here
+        chain.doFilter(request, response);
     }
 
-    @GetMapping("/logout")
-    public String logout(HttpSession session) {
-        // Logout logic
-        session.invalidate();
-        return "redirect:/login";
-    }
+    public void init(FilterConfig filterConfig) throws ServletException {}
+    public void destroy() {}
 }
-```
 
-## web.xml Configuration
-```xml
-<web-app>
-    <filter>
-        <filter-name>AuthenticationFilter</filter-name>
-        <filter-class>com.example.AuthenticationFilter</filter-class>
-    </filter>
-    <filter-mapping>
-        <filter-name>AuthenticationFilter</filter-name>
-        <url-pattern>/legacy-app/*</url-pattern>
-        <dispatcher>REQUEST</dispatcher>
-        <dispatcher>FORWARD</dispatcher>
-    </filter-mapping>
-    <session-config>
-        <session-timeout>30</session-timeout>
-    </session-config>
-    <cookie-config>
-        <http-only>true</http-only>
-        <secure>true</secure>
-    </cookie-config>
+// web.xml configuration
+<web-app xmlns="http://xmlns.jcp.org/xml/ns/javaee" version="3.1">
+    <servlet>
+        <servlet-name>AuthCallbackServlet</servlet-name>
+        <servlet-class>com.example.AuthCallbackServlet</servlet-class>
+    </servlet>
+    <servlet-mapping>
+        <servlet-name>AuthCallbackServlet</servlet-name>
+        <url-pattern>/auth/callback</url-pattern>
+    </servlet-mapping>
+    <servlet-mapping>
+        <servlet-name>AuthCallbackServlet</servlet-name>
+        <url-pattern>/auth/logout</url-pattern>
+    </servlet-mapping>
 </web-app>
-```
 
-## Configuration
-- Update gateway URLs with actual domain names in the `AuthenticationFilter` and `AuthCallbackController` classes.
+// Dependencies
+<dependency>
+    <groupId>org.json</groupId>
+    <artifactId>json</artifactId>
+    <version>20210307</version>
+</dependency>
 
-## Testing
-- **Static Resource Bypass:** Ensure static resources load without authentication.
-- **Authentication Flow:** Test the full authentication flow to ensure sessions are created properly.
-- **Session Persistence:** Verify that sessions persist as expected across requests.
-- **Logout:** Ensure logout functionality clears the session and cookies.
+// Testing instructions
+1. Deploy the application on a servlet container.
+2. Access the endpoint /auth/callback with a valid token to test authentication.
+3. Access the endpoint /auth/logout to test logout functionality.
 
-## Security Checklist
-- Ensure HTTPS is enforced.
-- Verify HTTP-Only cookies are used.
-- Confirm session timeouts are set correctly.
-- Validate open redirect protection logic.
+// Troubleshooting guide
+- Ensure the token validation URL is accessible.
+- Check for any issues with cookie settings.
 
-## Troubleshooting
-- **Authentication Loops:** Check filter configuration.
-- **Static Resource Issues:** Review bypass patterns.
-- **Token Validation Failures:** Log responses from the validation service.
-- **Session Persistence Issues:** Confirm session management logic.
-
-## Production Considerations
-- Implement network security best practices.
-- Enable logging and monitoring for security events.
-- Optimize performance for session management.
-- Handle errors gracefully to maintain user experience.
+// Security checklist
+- Validate return URL to prevent open redirects.
+- Ensure HTTP-Only and Secure flags are set on cookies.
+- Review tokens' expiration and refresh strategy.
